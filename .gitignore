@@ -1,0 +1,9 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+links.sqlite3
+links.sqlite3-shm
+links.sqlite3-wal
+links_db.json

