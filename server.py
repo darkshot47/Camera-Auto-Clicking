@@ -1,260 +1,315 @@
-import os
-import json
+"""Flask web app plus a supervised Telegram polling thread for Render."""
+
+import asyncio
 import base64
 import logging
+import os
 import threading
-import asyncio
 from io import BytesIO
-from flask import (
-    Flask, 
-    render_template, 
-    request, 
-    jsonify, 
-    send_file,
-    redirect,
-    url_for
-)
-from database import get_link, add_visitor
-import requests as http_requests
 
-# Logging
-logging.basicConfig(level=logging.INFO)
+import requests
+from flask import Flask, jsonify, render_template, request
+
+from database import add_visitor, get_link
+
+logging.basicConfig(
+    level=os.environ.get("LOG_LEVEL", "INFO").upper(),
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+)
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
+# Browser sends a base64 data URL. The decoded JPEG is limited separately below.
+app.config["MAX_CONTENT_LENGTH"] = 12 * 1024 * 1024
+MAX_PHOTO_BYTES = 8 * 1024 * 1024
+JPEG_DATA_URL_PREFIX = "data:image/jpeg;base64,"
 
-# Environment variables
-BOT_TOKEN = os.environ.get("BOT_TOKEN", "YOUR_BOT_TOKEN_HERE")
-WEBSITE_URL = os.environ.get("WEBSITE_URL", "https://your-app.onrender.com")
+_bot_lock = threading.Lock()
+_bot_thread = None
+_bot_loop = None
+_bot_application = None
+_bot_state = {"status": "not_started", "error": None}
 
-def send_photo_to_telegram(chat_id, photo_base64, visitor_info=""):
-    """
-    Captured photo ko Telegram bot ke through user ko bhejo
-    """
+
+def _set_bot_state(status, error=None):
+    with _bot_lock:
+        _bot_state["status"] = status
+        _bot_state["error"] = error
+
+
+def get_bot_status():
+    with _bot_lock:
+        return dict(_bot_state)
+
+
+def _run_bot():
+    """Run python-telegram-bot on a dedicated asyncio event loop."""
+    global _bot_loop, _bot_application
+
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    with _bot_lock:
+        _bot_loop = loop
+
+    application = None
+    initialized = False
+    started = False
+    failure = None
     try:
-        # Base64 se bytes mein convert
-        # Data URL format: data:image/jpeg;base64,/9j/4AAQ...
-        if "," in photo_base64:
-            photo_base64 = photo_base64.split(",")[1]
-        
-        photo_bytes = base64.b64decode(photo_base64)
-        
-        # Telegram API se photo bhejo
-        url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto"
-        
-        files = {
-            "photo": ("captured.jpg", BytesIO(photo_bytes), "image/jpeg")
-        }
-        
-        data = {
-            "chat_id": chat_id,
-            "caption": (
-                f"📸 **New Photo Captured!**\n\n"
-                f"👤 Visitor Info:\n{visitor_info}\n"
-                f"⏰ Just now!"
-            ),
-            "parse_mode": "Markdown"
-        }
-        
-        response = http_requests.post(url, files=files, data=data)
-        logger.info(f"Photo sent to {chat_id}: {response.status_code}")
-        return response.status_code == 200
-        
-    except Exception as e:
-        logger.error(f"Error sending photo: {e}")
-        
-        # Agar photo send fail ho, text message bhejo
+        from bot import get_bot_app
+
+        application = get_bot_app()
+        loop.run_until_complete(application.initialize())
+        initialized = True
+
+        if application.updater is None:
+            raise RuntimeError("Telegram polling is unavailable in this bot app")
+        # Follow PTB's lifecycle order: initialize, start polling, then start
+        # the update-processing application.
+        loop.run_until_complete(
+            application.updater.start_polling(drop_pending_updates=False)
+        )
+        loop.run_until_complete(application.start())
+        started = True
+
+        with _bot_lock:
+            _bot_application = application
+            _bot_state["status"] = "running"
+            _bot_state["error"] = None
+        logger.info("Telegram bot polling started")
+        loop.run_forever()
+    except Exception as exc:
+        failure = exc
+        _set_bot_state("failed", type(exc).__name__)
+        # Telegram API URLs contain the bot token; log only the exception type.
+        logger.error("Telegram bot failed to start or stopped (%s)", type(exc).__name__)
+    finally:
+        if application is not None:
+            async def shutdown():
+                if application.updater and application.updater.running:
+                    await application.updater.stop()
+                if application.running:
+                    await application.stop()
+                if initialized:
+                    await application.shutdown()
+
+            try:
+                loop.run_until_complete(shutdown())
+            except Exception as exc:
+                logger.error("Error while shutting down Telegram bot (%s)", type(exc).__name__)
+
         try:
-            url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-            data = {
-                "chat_id": chat_id,
-                "text": f"📸 Kisi ne tumhara link khola!\n\nVisitor: {visitor_info}",
-            }
-            http_requests.post(url, data=data)
-        except:
-            pass
-        
+            loop.run_until_complete(loop.shutdown_asyncgens())
+        except Exception:
+            logger.exception("Error while closing the Telegram event loop")
+        loop.close()
+        asyncio.set_event_loop(None)
+
+        with _bot_lock:
+            if _bot_loop is loop:
+                _bot_loop = None
+            if _bot_application is application:
+                _bot_application = None
+            if failure is None and _bot_state["status"] != "failed":
+                _bot_state["status"] = "stopped"
+                _bot_state["error"] = None
+
+
+def start_bot_background():
+    """Start exactly one Telegram polling thread in this web worker."""
+    global _bot_thread
+
+    if not os.environ.get("BOT_TOKEN", "").strip():
+        _set_bot_state("not_configured", "BOT_TOKEN is missing")
+        logger.error("BOT_TOKEN is missing; the website will run without the bot")
         return False
+
+    with _bot_lock:
+        if _bot_thread is not None and _bot_thread.is_alive():
+            return True
+        _bot_state["status"] = "starting"
+        _bot_state["error"] = None
+        _bot_thread = threading.Thread(
+            target=_run_bot,
+            name="telegram-polling",
+            daemon=True,
+        )
+        thread = _bot_thread
+
+    try:
+        thread.start()
+        return True
+    except RuntimeError as exc:
+        _set_bot_state("failed", type(exc).__name__)
+        logger.exception("Could not start Telegram bot thread")
+        return False
+
+
+def stop_bot_background():
+    """Ask the bot loop to shut down cleanly (useful for local runs/tests)."""
+    with _bot_lock:
+        loop = _bot_loop
+    if loop is not None and loop.is_running():
+        loop.call_soon_threadsafe(loop.stop)
+
+
+def send_photo_to_telegram(chat_id, photo_bytes):
+    """Send a visitor-approved JPEG to the Telegram chat that made the link."""
+    token = os.environ.get("BOT_TOKEN", "").strip()
+    if not token:
+        logger.error("Cannot send a photo: BOT_TOKEN is not configured")
+        return False
+
+    url = f"https://api.telegram.org/bot{token}/sendPhoto"
+    caption = (
+        "📸 Someone chose to take and send this photo from your shared link."
+    )
+    try:
+        response = requests.post(
+            url,
+            data={"chat_id": str(chat_id), "caption": caption},
+            files={
+                "photo": ("shared-camera-photo.jpg", BytesIO(photo_bytes), "image/jpeg")
+            },
+            timeout=(5, 30),
+        )
+        try:
+            result = response.json()
+        except ValueError:
+            result = {}
+
+        if response.ok and result.get("ok") is True:
+            return True
+
+        logger.warning(
+            "Telegram rejected sendPhoto (HTTP %s): %s",
+            response.status_code,
+            str(result.get("description", "no API description"))[:300],
+        )
+        return False
+    except requests.RequestException as exc:
+        # Do not log the request URL: Telegram bot URLs contain the bot token.
+        logger.error("Telegram sendPhoto request failed (%s)", type(exc).__name__)
+        return False
+
+
+@app.after_request
+def add_privacy_and_security_headers(response):
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("Referrer-Policy", "no-referrer")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault(
+        "Permissions-Policy", "camera=(self), microphone=(), geolocation=()"
+    )
+    # Shared images and camera results should not be stored by intermediary caches.
+    response.headers.setdefault("Cache-Control", "no-store")
+    return response
+
+
+@app.errorhandler(413)
+def request_too_large(_error):
+    return jsonify({"error": "Photo is too large. Please try a smaller image."}), 413
+
 
 @app.route("/")
 def home():
-    """Homepage"""
-    return """
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>Photo Share</title>
-        <style>
-            body {
-                font-family: 'Segoe UI', sans-serif;
-                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                min-height: 100vh;
-                display: flex;
-                justify-content: center;
-                align-items: center;
-                margin: 0;
-                color: white;
-            }
-            .container {
-                text-align: center;
-                padding: 40px;
-            }
-            h1 { font-size: 3em; }
-            p { font-size: 1.3em; opacity: 0.9; }
-            a {
-                color: white;
-                background: rgba(255,255,255,0.2);
-                padding: 15px 30px;
-                border-radius: 30px;
-                text-decoration: none;
-                display: inline-block;
-                margin-top: 20px;
-            }
-        </style>
-    </head>
-    <body>
-        <div class="container">
-            <h1>📸 Photo Share Bot</h1>
-            <p>Create and share photo links via Telegram!</p>
-            <a href="https://t.me/YOUR_BOT_USERNAME">Open Telegram Bot</a>
-        </div>
-    </body>
-    </html>
-    """
+    bot_username = os.environ.get("BOT_USERNAME", "").strip().lstrip("@")
+    return render_template("home.html", bot_username=bot_username)
+
 
 @app.route("/view/<link_id>")
 def view_photo(link_id):
-    """
-    Main page - Receiver yahan aayega
-    Image dikhegi + Camera capture hoga
-    """
+    """Show the submitted image and the optional, explicit-consent camera UI."""
     link_data = get_link(link_id)
-    
     if not link_data:
-        return """
-        <html>
-        <body style="display:flex;justify-content:center;align-items:center;
-        height:100vh;font-family:sans-serif;background:#1a1a2e;color:white;">
-        <div style="text-align:center;">
-            <h1>❌ Link Not Found</h1>
-            <p>This link is invalid or expired.</p>
-        </div>
-        </body></html>
-        """, 404
-    
+        return render_template(
+            "error.html",
+            title="Link not found",
+            message="This link is invalid or may have expired.",
+        ), 404
     if not link_data.get("is_active", True):
-        return """
-        <html>
-        <body style="display:flex;justify-content:center;align-items:center;
-        height:100vh;font-family:sans-serif;background:#1a1a2e;color:white;">
-        <div style="text-align:center;">
-            <h1>⏰ Link Expired</h1>
-            <p>This link is no longer active.</p>
-        </div>
-        </body></html>
-        """, 410
-    
-    image_base64 = link_data.get("image_url", "")
-    custom_message = link_data.get("custom_message", "Someone shared a photo!")
-    chat_id = link_data.get("chat_id", "")
-    
+        return render_template(
+            "error.html",
+            title="Link unavailable",
+            message="The person who created this link has deactivated it.",
+        ), 410
+
     return render_template(
         "viewer.html",
         link_id=link_id,
-        image_data=image_base64,
-        custom_message=custom_message,
-        chat_id=chat_id
+        image_data=link_data.get("image_url", ""),
+        custom_message=link_data.get("custom_message") or "A photo was shared with you.",
     )
+
 
 @app.route("/api/capture", methods=["POST"])
 def capture_photo():
-    """
-    Frontend se captured photo receive karo
-    Aur Telegram par bhejo
-    """
-    try:
-        data = request.get_json()
-        
-        link_id = data.get("link_id", "")
-        photo_data = data.get("photo", "")
-        visitor_info = data.get("visitor_info", "Unknown")
-        
-        if not link_id or not photo_data:
-            return jsonify({"error": "Missing data"}), 400
-        
-        # Link data lo
-        link_data = get_link(link_id)
-        if not link_data:
-            return jsonify({"error": "Invalid link"}), 404
-        
-        chat_id = link_data["chat_id"]
-        
-        # Visitor record karo
-        add_visitor(link_id, visitor_info)
-        
-        # Photo Telegram par bhejo
-        success = send_photo_to_telegram(
-            chat_id=chat_id,
-            photo_base64=photo_data,
-            visitor_info=visitor_info
-        )
-        
-        if success:
-            return jsonify({"status": "success"}), 200
-        else:
-            return jsonify({"status": "partial"}), 200
-            
-    except Exception as e:
-        logger.error(f"Capture error: {e}")
-        return jsonify({"error": str(e)}), 500
+    """Accept one JPEG only after the visitor explicitly chooses Send."""
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({"error": "A valid JSON request is required."}), 400
 
-@app.route("/api/notify", methods=["POST"])
-def notify_visit():
-    """Link visit notification bhejo"""
+    link_id = data.get("link_id")
+    photo_data = data.get("photo")
+    if not isinstance(link_id, str) or not link_id or len(link_id) > 80:
+        return jsonify({"error": "Invalid link."}), 400
+    if not isinstance(photo_data, str) or not photo_data.startswith(
+        JPEG_DATA_URL_PREFIX
+    ):
+        return jsonify({"error": "A JPEG photo is required."}), 400
+
+    link_data = get_link(link_id)
+    if not link_data:
+        return jsonify({"error": "Link not found."}), 404
+    if not link_data.get("is_active", True):
+        return jsonify({"error": "This link is no longer active."}), 410
+
+    encoded_photo = photo_data[len(JPEG_DATA_URL_PREFIX) :]
+    if not encoded_photo or len(encoded_photo) > ((MAX_PHOTO_BYTES + 2) // 3) * 4 + 8:
+        return jsonify({"error": "Photo is too large."}), 413
     try:
-        data = request.get_json()
-        link_id = data.get("link_id", "")
-        
-        link_data = get_link(link_id)
-        if link_data:
-            chat_id = link_data["chat_id"]
-            url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-            msg_data = {
-                "chat_id": chat_id,
-                "text": "👁️ Kisi ne tumhara link khola!",
-            }
-            http_requests.post(url, data=msg_data)
-        
-        return jsonify({"status": "ok"}), 200
-    except:
-        return jsonify({"status": "error"}), 500
+        photo_bytes = base64.b64decode(encoded_photo, validate=True)
+    except (ValueError, base64.binascii.Error):
+        return jsonify({"error": "The photo data is invalid."}), 400
+
+    if not photo_bytes.startswith(b"\xff\xd8\xff"):
+        return jsonify({"error": "The uploaded data is not a JPEG photo."}), 400
+    if len(photo_bytes) > MAX_PHOTO_BYTES:
+        return jsonify({"error": "Photo is too large."}), 413
+    if not link_data.get("chat_id"):
+        logger.error("Link %s has no Telegram destination", link_id)
+        return jsonify({"error": "This link cannot receive photos right now."}), 500
+
+    if not send_photo_to_telegram(link_data["chat_id"], photo_bytes):
+        return jsonify(
+            {"error": "Telegram could not deliver the photo. Please try again later."}
+        ), 502
+
+    try:
+        # Store only an aggregate count; no visitor metadata is kept.
+        add_visitor(link_id)
+    except Exception:
+        # Delivery already succeeded; don't encourage a repeat send just because
+        # updating the local statistics failed.
+        logger.exception("Photo was sent but its link statistics could not be saved")
+
+    return jsonify({"status": "sent"}), 200
+
 
 @app.route("/health")
 def health():
-    """Health check for Render"""
-    return jsonify({"status": "healthy"}), 200
+    """Render health check. The web service stays healthy if polling is missing."""
+    status = get_bot_status()
+    return jsonify(
+        {
+            "status": "healthy",
+            "telegram_bot": status["status"],
+        }
+    ), 200
 
-def run_bot():
-    """Bot ko separate thread mein chalao"""
-    from bot import get_bot_app
-    
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    
-    bot_app = get_bot_app()
-    loop.run_until_complete(bot_app.initialize())
-    loop.run_until_complete(bot_app.start())
-    loop.run_until_complete(
-        bot_app.updater.start_polling(drop_pending_updates=True)
-    )
-    loop.run_forever()
 
 if __name__ == "__main__":
-    # Bot ko background thread mein start karo
-    bot_thread = threading.Thread(target=run_bot, daemon=True)
-    bot_thread.start()
-    logger.info("🤖 Bot started in background thread")
-    
-    # Flask server start karo
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port, debug=False)
+    # Local development entry point. Render uses Gunicorn and gunicorn.conf.py.
+    start_bot_background()
+    port = int(os.environ.get("PORT", "5000"))
+    app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)

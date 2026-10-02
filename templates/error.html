@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>{{ title }} · Photo Share</title>
+  <style>
+    body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 24px; background: #f4f6fb; color: #172033; font-family: system-ui, sans-serif; }
+    main { width: min(100%, 480px); padding: 34px; border: 1px solid #e2e7f0; border-radius: 20px; background: white; text-align: center; box-shadow: 0 15px 40px rgba(30, 51, 100, .08); }
+    h1 { margin: 0 0 12px; font-size: 27px; }
+    p { margin: 0; color: #667085; line-height: 1.6; }
+    a { display: inline-block; margin-top: 22px; color: #315ce8; font-weight: 700; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>{{ title }}</h1>
+    <p>{{ message }}</p>
+    <a href="/">Photo Share home</a>
+  </main>
+</body>
+</html>
